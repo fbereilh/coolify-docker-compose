@@ -1,0 +1,123 @@
+version: '3.9'
+services:
+  postgres:
+    image: 'postgres:15'
+    container_name: airflow_postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - 'postgres_data:/var/lib/postgresql/data'
+    networks:
+      - airflow
+  redis:
+    image: 'redis:latest'
+    container_name: airflow_redis
+    networks:
+      - airflow
+  airflow-scheduler:
+    image: 'apache/airflow:2.6.2'
+    container_name: airflow_scheduler
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:-YOUR_FERNET_KEY}'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__WEBSERVER__SECRET_KEY: '${AIRFLOW_SECRET_KEY:-YOUR_WEB_SECRET}'
+      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+    volumes:
+      - 'airflow_logs:/opt/airflow/logs'
+      - 'airflow_dags:/opt/airflow/dags'
+    command:
+      - airflow
+      - scheduler
+    networks:
+      - airflow
+  airflow-webserver:
+    image: 'apache/airflow:2.6.2'
+    container_name: airflow_webserver
+    depends_on:
+      - postgres
+      - redis
+      - airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:-YOUR_FERNET_KEY}'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__WEBSERVER__SECRET_KEY: '${AIRFLOW_SECRET_KEY:-YOUR_WEB_SECRET}'
+      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+    volumes:
+      - 'airflow_logs:/opt/airflow/logs'
+      - 'airflow_dags:/opt/airflow/dags'
+    command:
+      - airflow
+      - webserver
+    networks:
+      - airflow
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.airflow.rule=Host(`airflow.example.com`)
+      - traefik.http.routers.airflow.entrypoints=web
+      - traefik.http.services.airflow.loadbalancer.server.port=8080
+  airflow-worker:
+    image: 'apache/airflow:2.6.2'
+    container_name: airflow_worker
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:-YOUR_FERNET_KEY}'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__WEBSERVER__SECRET_KEY: '${AIRFLOW_SECRET_KEY:-YOUR_WEB_SECRET}'
+    volumes:
+      - 'airflow_logs:/opt/airflow/logs'
+      - 'airflow_dags:/opt/airflow/dags'
+    command:
+      - airflow
+      - celery
+      - worker
+    networks:
+      - airflow
+  airflow-init:
+    image: 'apache/airflow:2.6.2'
+    container_name: airflow_init
+    restart: "no"
+    depends_on:
+      - postgres
+      - redis
+    entrypoint: /bin/bash
+    command:
+      - '-c'
+      - "echo \"Initializing Airflow DB...\"\nairflow db init\necho \"Creating Admin user...\"\nairflow users create \\\n  --username admin \\\n  --password admin \\\n  --firstname Airflow \\\n  --lastname Admin \\\n  --role Admin \\\n  --email admin@example.com\n"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:-YOUR_FERNET_KEY}'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__WEBSERVER__SECRET_KEY: '${AIRFLOW_SECRET_KEY:-YOUR_WEB_SECRET}'
+    volumes:
+      - 'airflow_logs:/opt/airflow/logs'
+      - 'airflow_dags:/opt/airflow/dags'
+    networks:
+      - airflow
+networks:
+  airflow: null
+volumes:
+  postgres_data: null
+  airflow_logs: null
+  airflow_dags: null
